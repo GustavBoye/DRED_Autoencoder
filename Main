@@ -243,10 +243,10 @@ encoder_3 = tf.keras.models.load_model('./checkpoints/encoder_3.keras')
 decoder_3 = tf.keras.models.load_model('./checkpoints/decoder_3.keras')
 
 
-#encoder_4 = build_encoder4()
-encoder_4 = tf.keras.models.load_model('./checkpoints/encoder_4.keras')
-#decoder_4 = build_decoder4()
-decoder_4 = tf.keras.models.load_model('./checkpoints/decoder_4.keras')
+encoder_4 = build_encoder4()
+#encoder_4 = tf.keras.models.load_model('./checkpoints/encoder_4.keras')
+decoder_4 = build_decoder4()
+#decoder_4 = tf.keras.models.load_model('./checkpoints/decoder_4.keras')
 
 def make_predictions(train_x):
 
@@ -291,6 +291,10 @@ def make_predictions(train_x):
         z_double_encoded = encoder_3.predict(z_encoded)
 
         z_dd_encoded = encoder_4.predict(z_double_encoded)
+
+        if random.randint(0, 2) == 0:
+            z_dd_encoded += np.random.rand(1,6)*0.2
+
         z_dd_decoded = decoder_4.predict(z_dd_encoded)
 
 
@@ -466,5 +470,5 @@ while True:
         decoder_r2.save('./checkpoints/decoder_r2.keras')
         encoder_3.save('./checkpoints/encoder_3.keras')
         decoder_3.save('./checkpoints/decoder_3.keras')
-
-
+        encoder_4.save('checkpoints/encoder_4.keras')
+        decoder_4.save('checkpoints/decoder_4.keras')
