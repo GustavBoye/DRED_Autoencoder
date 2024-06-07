@@ -1,0 +1,305 @@
+import os
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from PIL import Image
+import random
+from tensorflow.keras import regularizers
+
+WIDTH = 64
+HEIGHT = 64
+
+
+def encoder_block(inputs, filters):
+    regularizer = tf.keras.regularizers.L2(1e-4)  # L2 regularization with lambda = 1e-4
+    conv = tf.keras.layers.Conv2D(filters, (3, 3), strides=(2, 2), padding='same',
+                                  activity_regularizer=regularizer)(inputs)
+    conv = tf.keras.layers.LayerNormalization()(conv)
+    conv = tf.keras.layers.LeakyReLU()(conv)
+
+    #skip = skip_block(conv, filters)
+
+    return conv
+
+def decoder_block(inputs, filters):
+    regularizer = tf.keras.regularizers.L2(1e-4)  # L2 regularization with lambda = 1e-4
+    upsample = tf.keras.layers.Conv2DTranspose(filters, (3, 3), strides=(2, 2), padding='same',
+                                               activity_regularizer=regularizer)(inputs)
+    upsample = tf.keras.layers.LayerNormalization()(upsample)
+    upsample = tf.keras.layers.LeakyReLU()(upsample)
+
+    #skip = skip_block(upsample, filters)
+
+    return upsample
+
+def skip_block(inputs, filters):
+
+    regularizer = tf.keras.regularizers.L2(1e-4)  # L2 regularization with lambda = 1e-4
+    conv = tf.keras.layers.Conv2D(filters, (3, 3), strides=(1, 1), padding='same',
+                                  activity_regularizer=regularizer)(inputs)
+    upsample2 = tf.keras.layers.LeakyReLU()(conv)
+
+    output = inputs+upsample2
+
+    return output
+def build_encoder():
+    input = tf.keras.layers.Input(shape=(HEIGHT, WIDTH, 3))
+    kernel_regularizer = regularizers.l2(0.0001)
+
+    # Encoder
+    conv0 = encoder_block(input, 32)  # 32
+    conv1 = encoder_block(conv0, 64)  # 16
+    conv2 = encoder_block(conv1, 128)  # 8
+
+
+    #flatten = tf.keras.layers.Flatten()(conv2)
+    #dense = tf.keras.layers.Dense(1024, kernel_regularizer=kernel_regularizer)(flatten)
+    #dense = tf.keras.layers.LayerNormalization()(dense)
+    #dense = tf.keras.layers.LeakyReLU()(dense)
+
+    model = tf.keras.Model(inputs=input, outputs=conv2)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+def build_decoder():
+    input = tf.keras.layers.Input(shape=(8,8,128,))
+
+
+    #dense2 = tf.keras.layers.Dense(8*8*16)(input)
+    #dense2 = tf.keras.layers.LayerNormalization()(dense2)
+    #dense2 = tf.keras.layers.LeakyReLU()(dense2)
+
+    # Add the reshaping layer to connect to the decoder
+    #reshape = tf.keras.layers.Reshape((8, 8, 16))(dense2)
+
+    # Decoder
+    #up1 = decoder_block(reshape, 256) # 16
+    #noised_input = tf.keras.layers.GaussianNoise(0.7)(input)
+    up2 = decoder_block(input, 128) # 16
+    up3 = decoder_block(up2, 64) # 32
+    up4 = decoder_block(up3, 32) # 64
+
+    output = tf.keras.layers.Conv2DTranspose(3, (1, 1), strides=(1, 1), padding='same', activation='sigmoid')(up4)
+
+    model = tf.keras.Model(inputs=input, outputs=output)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+
+def build_encoder2():
+    input = tf.keras.layers.Input(shape=(8,8,128,))
+
+    conv2 = encoder_block(input, 448)  # 4
+    conv3 = encoder_block(conv2, 768)  # 2
+
+
+    model = tf.keras.Model(inputs=input, outputs=conv3)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+
+def build_decoder2():
+    input = tf.keras.layers.Input(shape=(2,2, 768,))
+
+    #noised_input = tf.keras.layers.GaussianNoise(0.05)(input)
+    conv2 = decoder_block(input, 256)  # 2
+    conv3 = decoder_block(conv2, 128)  # 4
+
+
+    model = tf.keras.Model(inputs=input, outputs=conv3)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+
+
+
+def build_autoencoder():
+    input = tf.keras.layers.Input(shape=(HEIGHT, WIDTH, 3))
+
+    # Build encoder
+    encoder_output = build_encoder()(input)
+
+    # Build decoder
+    decoder_output = build_decoder()(encoder_output)
+
+    # Create autoencoder model
+    autoencoder = tf.keras.Model(inputs=input, outputs=decoder_output)
+    autoencoder.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return autoencoder
+
+
+encoder = build_encoder()
+decoder = build_decoder()
+
+
+encoder_r2 = build_encoder2()
+decoder_r2 = build_decoder2()
+
+
+
+def make_predictions(train_x):
+
+
+    for i in range(len(train_x)):
+        input_image = train_x[i]
+        print(f"got random image with shape {input_image.shape})")
+        input_image = np.expand_dims(input_image, axis=0)
+        print(f"got random image with shape {input_image.shape})")
+
+
+        # Predict with the generator model
+        z = encoder.predict(input_image)
+
+        #print(z)
+        predicted_image = decoder.predict(z)
+
+        # Clip values to [0, 1] range
+        predicted_image = np.clip(predicted_image, 0, 1)
+
+        # Save the original image
+        save_path_original = os.path.join("C:\\Users\\G_Cha\\OneDrive\\Skrivebord\\ORC\\predictions", f"image_{i}_org.png")
+        plt.imsave(save_path_original, np.clip(input_image[0], 0, 1))
+
+
+        # Save the predicted image
+        save_path_predicted = os.path.join("C:\\Users\\G_Cha\\OneDrive\\Skrivebord\\ORC\\predictions", f"image_{i}.png")
+        plt.imsave(save_path_predicted, np.clip(predicted_image[0], 0, 1))
+
+    for ib in range(len(train_x)):
+        input_image = train_x[ib]
+        print(f"got random image with shape {input_image.shape})")
+        input_image = np.expand_dims(input_image, axis=0)
+        print(f"got random image with shape {input_image.shape})")
+
+
+        # Predict with the generator model
+        z = encoder.predict(input_image)
+
+        z_encoded = encoder_r2.predict(z)
+        z_decoded = decoder_r2.predict(z_encoded)
+
+        #print(z)
+        predicted_image = decoder.predict(z_decoded)
+
+        # Clip values to [0, 1] range
+        predicted_image = np.clip(predicted_image, 0, 1)
+
+
+
+        # Save the predicted image
+        save_path_predicted = os.path.join("C:\\Users\\G_Cha\\OneDrive\\Skrivebord\\ORC\\predictions", f"image_decoder2{ib}.png")
+        plt.imsave(save_path_predicted, np.clip(predicted_image[0], 0, 1))
+
+
+
+
+optimizer_enc = tf.keras.optimizers.Adam(0.001)
+optimizer_dec = tf.keras.optimizers.Adam(0.002)
+
+optimizer_enc_r2 = tf.keras.optimizers.Adam(0.001)
+optimizer_dec_r2 = tf.keras.optimizers.Adam(0.002)
+
+
+
+@tf.function
+def train_step(images):
+    with tf.GradientTape() as encoder_tape, tf.GradientTape() as decoder_tape:
+
+        encoding = encoder(images)
+        generated_images = decoder(encoding, training=True)
+
+        loss = tf.keras.losses.MSE(images, generated_images)
+
+    gradients_of_enc = encoder_tape.gradient(loss, encoder.trainable_variables)
+    gradients_of_dec = decoder_tape.gradient(loss, decoder.trainable_variables)
+
+    optimizer_enc.apply_gradients(zip(gradients_of_enc, encoder.trainable_variables))
+    optimizer_dec.apply_gradients(zip(gradients_of_dec, decoder.trainable_variables))
+
+    train_step2(encoding)
+    return loss
+
+@tf.function
+def train_step2(latent_z):
+    with tf.GradientTape() as encoder_tape_r2, tf.GradientTape() as decoder_tape_r2:
+
+        encoding = encoder_r2(latent_z)
+        decoded_latent = decoder_r2(encoding, training=True)
+
+        loss = tf.keras.losses.MSE(latent_z, decoded_latent)
+
+    gradients_of_enc = encoder_tape_r2.gradient(loss, encoder_r2.trainable_variables)
+    gradients_of_dec = decoder_tape_r2.gradient(loss, decoder_r2.trainable_variables)
+
+    optimizer_enc_r2.apply_gradients(zip(gradients_of_enc, encoder_r2.trainable_variables))
+    optimizer_dec_r2.apply_gradients(zip(gradients_of_dec, decoder_r2.trainable_variables))
+    return loss
+
+
+
+def load_images(folder_path):
+    # Get a sorted list of image files in the directory
+    image_files = sorted(
+        [f for f in os.listdir(folder_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    )
+
+    # Check if there are enough images to sample
+    if len(image_files) < 8:
+        raise ValueError("Not enough images in the folder to sample 8 images.")
+
+    # Randomly sample 8 images
+    sampled_images = random.sample(image_files, 8)
+
+    batch = []
+    for image_file in sampled_images:
+        image_path = os.path.join(folder_path, image_file)
+        image = Image.open(image_path)
+
+        # Convert RGBA images to RGB
+        if image.mode == 'RGBA':
+            image = image.convert('RGB')
+
+        # Crop the image based on its size
+        width, height = image.size
+        if width == 1024 and height == 1024:
+            max_x = width - 900
+            max_y = height - 900
+            left = random.randint(0, max_x)
+            up = random.randint(0, max_y)
+            image = image.crop((left, up, left + 800, up + 800))
+
+        elif width == 512 and height == 512:
+            max_x = width - 400
+            max_y = height - 400
+            left = random.randint(0, max_x)
+            up = random.randint(0, max_y)
+            image = image.crop((left, up, left + 400, up + 400))
+
+        else:
+            print(f"Skipping {image_file} due to unexpected size {width}x{height}.")
+            continue
+
+        image = image.resize((WIDTH, HEIGHT))  # Resize for faster training
+        image = np.array(image) / 255.0  # Normalize pixel values
+        batch.append(image)
+
+    return np.array(batch)
+
+
+i = 0
+# Training loop
+while True:
+
+    i+=1
+    # Training loop
+    batch = load_images("C:\\Users\\G_Cha\\OneDrive\\Skrivebord\\ORC\\orc_references")
+
+    train_step(batch)
+
+    if i % 75 == 0:
+        make_predictions(batch)
+
+        encoder.save('./checkpoints/encoder.keras')
+        decoder.save('./checkpoints/decoder.keras')
+        encoder_r2.save('./checkpoints/encoder_r2.keras')
+        decoder_r2.save('./checkpoints/decoder_r2.keras')
+
+
+
