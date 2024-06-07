@@ -18,9 +18,9 @@ def encoder_block(inputs, filters):
     conv = tf.keras.layers.LayerNormalization()(conv)
     conv = tf.keras.layers.LeakyReLU()(conv)
 
-    #skip = skip_block(conv, filters)
+    skip = skip_block(conv, filters)
 
-    return conv
+    return skip
 
 def decoder_block(inputs, filters):
     regularizer = tf.keras.regularizers.L2(1e-4)  # L2 regularization with lambda = 1e-4
@@ -29,14 +29,14 @@ def decoder_block(inputs, filters):
     upsample = tf.keras.layers.LayerNormalization()(upsample)
     upsample = tf.keras.layers.LeakyReLU()(upsample)
 
-    #skip = skip_block(upsample, filters)
+    skip = skip_block(upsample, filters)
 
-    return upsample
+    return skip
 
 def skip_block(inputs, filters):
 
     regularizer = tf.keras.regularizers.L2(1e-4)  # L2 regularization with lambda = 1e-4
-    conv = tf.keras.layers.Conv2D(filters, (3, 3), strides=(1, 1), padding='same',
+    conv = tf.keras.layers.Conv2D(filters, (1, 1), strides=(1, 1), padding='same',
                                   activity_regularizer=regularizer)(inputs)
     upsample2 = tf.keras.layers.LeakyReLU()(conv)
 
@@ -74,8 +74,8 @@ def build_decoder():
 
     # Decoder
     #up1 = decoder_block(reshape, 256) # 16
-    #noised_input = tf.keras.layers.GaussianNoise(0.7)(input)
-    up2 = decoder_block(input, 128) # 16
+    noised_input = tf.keras.layers.GaussianNoise(0.1)(input)
+    up2 = decoder_block(noised_input, 128) # 16
     up3 = decoder_block(up2, 64) # 32
     up4 = decoder_block(up3, 32) # 64
 
@@ -88,8 +88,8 @@ def build_decoder():
 def build_encoder2():
     input = tf.keras.layers.Input(shape=(8,8,128,))
 
-    conv2 = encoder_block(input, 448)  # 4
-    conv3 = encoder_block(conv2, 768)  # 2
+    conv2 = encoder_block(input, 512)  # 4
+    conv3 = encoder_block(conv2, 1224)  # 2
 
 
     model = tf.keras.Model(inputs=input, outputs=conv3)
@@ -97,10 +97,10 @@ def build_encoder2():
     return model
 
 def build_decoder2():
-    input = tf.keras.layers.Input(shape=(2,2, 768,))
+    input = tf.keras.layers.Input(shape=(2,2, 1224,))
 
-    #noised_input = tf.keras.layers.GaussianNoise(0.05)(input)
-    conv2 = decoder_block(input, 256)  # 2
+    noised_input = tf.keras.layers.GaussianNoise(0.1)(input)
+    conv2 = decoder_block(noised_input, 448)  # 2
     conv3 = decoder_block(conv2, 128)  # 4
 
 
@@ -109,16 +109,16 @@ def build_decoder2():
     return model
 
 def build_encoder3():
-    input = tf.keras.layers.Input(shape=(2,2,768,))
+    input = tf.keras.layers.Input(shape=(2,2,1224,))
 
     flatten = tf.keras.layers.Flatten()(input)
 
     kernel_regularizer = regularizers.l2(0.0001)
-    dense = tf.keras.layers.Dense(512, kernel_regularizer=kernel_regularizer)(flatten)
+    dense = tf.keras.layers.Dense(1224, kernel_regularizer=kernel_regularizer)(flatten)
     dense = tf.keras.layers.LayerNormalization()(dense)
     dense = tf.keras.layers.LeakyReLU()(dense)
 
-    dense = tf.keras.layers.Dense(256, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.Dense(900, kernel_regularizer=kernel_regularizer)(dense)
     dense = tf.keras.layers.LayerNormalization()(dense)
     dense = tf.keras.layers.LeakyReLU()(dense)
 
@@ -128,20 +128,22 @@ def build_encoder3():
     return model
 
 def build_decoder3():
-    input = tf.keras.layers.Input(shape=(256,))
+    input = tf.keras.layers.Input(shape=(900,))
 
-    flatten = tf.keras.layers.Flatten()(input)
+    noised_input = tf.keras.layers.GaussianNoise(0.1)(input)
+
+
+    flatten = tf.keras.layers.Flatten()(noised_input)
+
 
     kernel_regularizer = regularizers.l2(0.0001)
-    dense = tf.keras.layers.Dense(512, kernel_regularizer=kernel_regularizer)(flatten)
+    dense = tf.keras.layers.Dense(1224, kernel_regularizer=kernel_regularizer)(flatten)
     dense = tf.keras.layers.LayerNormalization()(dense)
     dense = tf.keras.layers.LeakyReLU()(dense)
 
-    dense2 = tf.keras.layers.Dense(768*2*2, kernel_regularizer=kernel_regularizer)(dense)
-    dense2 = tf.keras.layers.LayerNormalization()(dense2)
-    dense2 = tf.keras.layers.LeakyReLU()(dense2)
+    conv = tf.keras.layers.Reshape((1, 1, 1224))(dense)
 
-    output = tf.keras.layers.Reshape((2, 2, 768))(dense2)
+    output = decoder_block(conv, 1224)
 
 
     model = tf.keras.Model(inputs=input, outputs=output)
@@ -182,6 +184,7 @@ decoder_r2 = tf.keras.models.load_model('./checkpoints/decoder_r2.keras')
 
 #encoder_3 = build_encoder3()
 encoder_3 = tf.keras.models.load_model('./checkpoints/encoder_3.keras')
+#decoder_3 = build_decoder3()
 decoder_3 = tf.keras.models.load_model('./checkpoints/decoder_3.keras')
 
 def make_predictions(train_x):
@@ -245,14 +248,14 @@ def make_predictions(train_x):
 
 
 
-optimizer_enc = tf.keras.optimizers.Adam(0.0004)
-optimizer_dec = tf.keras.optimizers.Adam(0.0004)
+optimizer_enc = tf.keras.optimizers.Adam(0.0001)
+optimizer_dec = tf.keras.optimizers.Adam(0.0001)
 
-optimizer_enc_r2 = tf.keras.optimizers.Adam(0.0008)
-optimizer_dec_r2 = tf.keras.optimizers.Adam(0.0008)
+optimizer_enc_r2 = tf.keras.optimizers.Adam(0.0004)
+optimizer_dec_r2 = tf.keras.optimizers.Adam(0.0004)
 
 optimizer_enc_3 = tf.keras.optimizers.Adam(0.001)
-optimizer_dec_3 = tf.keras.optimizers.Adam(0.002)
+optimizer_dec_3 = tf.keras.optimizers.Adam(0.001)
 
 
 
@@ -309,6 +312,7 @@ def train_step3(latent_z):
     return loss
 
 
+
 def load_images(folder_path):
     # Get a sorted list of image files in the directory
     image_files = sorted(
@@ -316,7 +320,7 @@ def load_images(folder_path):
     )
 
     # Check if there are enough images to sample
-    if len(image_files) < 8:
+    if len(image_files) < 6:
         raise ValueError("Not enough images in the folder to sample 8 images.")
 
     # Randomly sample 8 images
@@ -334,11 +338,11 @@ def load_images(folder_path):
         # Crop the image based on its size
         width, height = image.size
         if width == 1024 and height == 1024:
-            max_x = width - 980
-            max_y = height - 980
-            left = random.randint(0, max_x)
-            up = random.randint(0, max_y)
-            image = image.crop((left, up, left + 980, up + 980))
+
+
+            left = random.randint(0, 20)
+            up = random.randint(0, 20)
+            image = image.crop((left, up, left + 1024-20, up + 1024-20))
 
         elif width == 512 and height == 512:
             max_x = width - 400
