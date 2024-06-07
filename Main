@@ -150,6 +150,61 @@ def build_decoder3():
     model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
     return model
 
+def build_encoder4():
+    input = tf.keras.layers.Input(shape=(900,))
+
+
+    kernel_regularizer = regularizers.l2(0.0001)
+    dense = tf.keras.layers.Dense(600, kernel_regularizer=kernel_regularizer)(input)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+    dense = tf.keras.layers.Dense(400, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+    dense = tf.keras.layers.Dense(80, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+    dense = tf.keras.layers.Dense(6, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+
+    model = tf.keras.Model(inputs=input, outputs=dense)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+
+def build_decoder4():
+    input = tf.keras.layers.Input(shape=(6,))
+
+    kernel_regularizer = regularizers.l2(0.0001)
+
+    dense = tf.keras.layers.Dense(80, kernel_regularizer=kernel_regularizer)(input)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+    dense = tf.keras.layers.Dense(400, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+    dense = tf.keras.layers.Dense(600, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+
+    dense = tf.keras.layers.Dense(900, kernel_regularizer=kernel_regularizer)(dense)
+    dense = tf.keras.layers.LayerNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU()(dense)
+
+
+    model = tf.keras.Model(inputs=input, outputs=dense)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+    return model
+
+
+
 
 def build_autoencoder():
     input = tf.keras.layers.Input(shape=(HEIGHT, WIDTH, 3))
@@ -186,6 +241,12 @@ decoder_r2 = tf.keras.models.load_model('./checkpoints/decoder_r2.keras')
 encoder_3 = tf.keras.models.load_model('./checkpoints/encoder_3.keras')
 #decoder_3 = build_decoder3()
 decoder_3 = tf.keras.models.load_model('./checkpoints/decoder_3.keras')
+
+
+#encoder_4 = build_encoder4()
+encoder_4 = tf.keras.models.load_model('./checkpoints/encoder_4.keras')
+#decoder_4 = build_decoder4()
+decoder_4 = tf.keras.models.load_model('./checkpoints/decoder_4.keras')
 
 def make_predictions(train_x):
 
@@ -228,7 +289,12 @@ def make_predictions(train_x):
         z_encoded = encoder_r2.predict(z)
 
         z_double_encoded = encoder_3.predict(z_encoded)
-        z_double_decoded = decoder_3.predict(z_double_encoded)
+
+        z_dd_encoded = encoder_4.predict(z_double_encoded)
+        z_dd_decoded = decoder_4.predict(z_dd_encoded)
+
+
+        z_double_decoded = decoder_3.predict(z_dd_decoded)
 
 
         z_decoded = decoder_r2.predict(z_double_decoded)
@@ -257,6 +323,8 @@ optimizer_dec_r2 = tf.keras.optimizers.Adam(0.0004)
 optimizer_enc_3 = tf.keras.optimizers.Adam(0.001)
 optimizer_dec_3 = tf.keras.optimizers.Adam(0.001)
 
+optimizer_enc_4 = tf.keras.optimizers.Adam(0.001)
+optimizer_dec_4 = tf.keras.optimizers.Adam(0.001)
 
 
 @tf.function
@@ -309,6 +377,23 @@ def train_step3(latent_z):
 
     optimizer_enc_3.apply_gradients(zip(gradients_of_enc, encoder_3.trainable_variables))
     optimizer_dec_3.apply_gradients(zip(gradients_of_dec, decoder_3.trainable_variables))
+    train_step4(encoding)
+    return loss
+
+@tf.function
+def train_step4(latent_z):
+    with tf.GradientTape() as encoder_tape_4, tf.GradientTape() as decoder_tape_4:
+
+        encoding = encoder_4(latent_z)
+        decoded_latent = decoder_4(encoding, training=True)
+
+        loss = tf.keras.losses.MSE(latent_z, decoded_latent)
+
+    gradients_of_enc = encoder_tape_4.gradient(loss, encoder_4.trainable_variables)
+    gradients_of_dec = decoder_tape_4.gradient(loss, decoder_4.trainable_variables)
+
+    optimizer_enc_4.apply_gradients(zip(gradients_of_enc, encoder_4.trainable_variables))
+    optimizer_dec_4.apply_gradients(zip(gradients_of_dec, decoder_4.trainable_variables))
     return loss
 
 
